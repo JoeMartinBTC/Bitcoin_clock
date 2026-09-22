@@ -118,7 +118,7 @@ final class MempoolData: ObservableObject {
            let f = j["fastestFee"] as? Int, let h = j["halfHourFee"] as? Int, let o = j["hourFee"] as? Int {
             fees = (f, h, o)
         }
-        if k.contains(.priceUSD) || k.contains(.priceEUR), let j = await Self.json("v1/prices") {
+        if k.contains(.priceUSD) || k.contains(.priceEUR) || k.contains(.fees), let j = await Self.json("v1/prices") {
             usd = j["USD"] as? Int
             eur = j["EUR"] as? Int
         }

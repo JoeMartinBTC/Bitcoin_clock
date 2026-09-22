@@ -30,9 +30,105 @@ enum HourExplanation {
     ]
 }
 
+/// Die Zeichen und Begriffe, die in den Formeln vorkommen, in einfacher Sprache.
+enum Glossary: CaseIterable {
+    case pi, e, phi, power, sqrt, cbrt, ln, sinCos, sec, csc, radian, sinh, gamma, fibonacci, lucas
+
+    var symbol: String {
+        switch self {
+        case .pi: return "π"
+        case .e: return "e"
+        case .phi: return "φ"
+        case .power: return "aⁿ"
+        case .sqrt: return "√"
+        case .cbrt: return "∛"
+        case .ln: return "ln"
+        case .sinCos: return "sin, cos"
+        case .sec: return "sec"
+        case .csc: return "csc"
+        case .radian: return "rad"
+        case .sinh: return "sinh"
+        case .gamma: return "Γ, !"
+        case .fibonacci: return "Fₙ"
+        case .lucas: return "Lₙ"
+        }
+    }
+
+    var name: String {
+        switch self {
+        case .pi: return "Kreiszahl Pi, ≈ 3,14159"
+        case .e: return "Eulersche Zahl, ≈ 2,71828"
+        case .phi: return "Goldener Schnitt, ≈ 1,61803"
+        case .power: return "Potenz (hochgestellte Zahl)"
+        case .sqrt: return "Quadratwurzel"
+        case .cbrt: return "Kubikwurzel (dritte Wurzel)"
+        case .ln: return "Natürlicher Logarithmus"
+        case .sinCos: return "Sinus und Kosinus"
+        case .sec: return "Sekans"
+        case .csc: return "Kosekans"
+        case .radian: return "Bogenmaß"
+        case .sinh: return "Hyperbelsinus"
+        case .gamma: return "Gammafunktion und Fakultät"
+        case .fibonacci: return "Fibonacci-Zahlen"
+        case .lucas: return "Lucas-Zahlen"
+        }
+    }
+
+    var text: String {
+        switch self {
+        case .pi:
+            return "Das Verhältnis von Umfang zu Durchmesser eines Kreises. Jeder Kreis ist ringsherum gut dreimal so lang wie quer hindurch, genau 3,14159 … mal. Die Nachkommastellen enden nie und wiederholen sich nie."
+        case .e:
+            return "Die Grundzahl des natürlichen Wachstums. Legt man 1 € zu 100 % Jahreszins an und schreibt die Zinsen nicht einmal im Jahr, sondern in jedem Augenblick gut, hat man nach einem Jahr genau e Euro, also 2,72 €."
+        case .phi:
+            return "Teilt man eine Strecke so, dass die ganze Strecke zum längeren Stück im selben Verhältnis steht wie das längere zum kürzeren, ist dieses Verhältnis φ = (1 + √5) / 2. Es steckt in Sonnenblumen, Muscheln, Bauwerken und in den Fibonacci-Zahlen."
+        case .power:
+            return "Eine hochgestellte Zahl sagt, wie oft man die Zahl darunter mit sich selbst malnimmt: 10³ = 10 · 10 · 10 = 1000. Ist die Hochzahl keine ganze Zahl, wie bei e hoch φ, setzt man diese Regel stufenlos fort."
+        case .sqrt:
+            return "√a ist die Zahl, die mit sich selbst malgenommen a ergibt. √2 = 1,41421 …, denn 1,41421² ≈ 2. Geometrisch: die Diagonale eines Quadrats mit Seitenlänge 1."
+        case .cbrt:
+            return "∛a ist die Zahl, die dreimal mit sich selbst malgenommen a ergibt. ∛8 = 2, weil 2 · 2 · 2 = 8. Geometrisch: die Kantenlänge eines Würfels mit dem Volumen a."
+        case .ln:
+            return "Die Frage nach der Hochzahl zur Basis e: ln(x) ist die Zahl, mit der man e potenzieren muss, um x zu erhalten. ln(e) = 1, ln(1) = 0."
+        case .sinCos:
+            return "Ein Punkt wandert auf einem Kreis mit Radius 1. Der Sinus ist seine Höhe über der Mitte, der Kosinus sein Abstand nach rechts. Beide schwanken zwischen −1 und 1, wie eine Welle."
+        case .sec:
+            return "Der Kehrwert des Kosinus: sec x = 1 / cos x. Ist der Kosinus klein, wird der Sekans groß."
+        case .csc:
+            return "Der Kehrwert des Sinus: csc x = 1 / sin x. Ist der Sinus klein, wird der Kosekans groß."
+        case .radian:
+            return "Winkel werden in der Mathematik oft nicht in Grad gemessen, sondern als Länge des Bogens auf einem Kreis mit Radius 1. Ein voller Kreis sind dann 2π ≈ 6,28 statt 360°. Die 20 bei sec²(20) sind also gut drei volle Umdrehungen."
+        case .sinh:
+            return "Ein Verwandter des Sinus, gebaut aus der Eulerschen Zahl: sinh x = (eˣ − e⁻ˣ) / 2. Er gehört zur Hyperbel wie der Sinus zum Kreis."
+        case .gamma:
+            return "Die Fakultät n! multipliziert alle Zahlen von 1 bis n: 4! = 1 · 2 · 3 · 4 = 24. Die Gammafunktion Γ setzt das auf alle Zahlen fort, auch zwischen den ganzen. Für ganze Zahlen gilt Γ(n) = (n − 1)!."
+        case .fibonacci:
+            return "Die Folge 1, 1, 2, 3, 5, 8, 13, 21, 34 …: Jede Zahl ist die Summe der beiden davor. Das Verhältnis zweier Nachbarn nähert sich immer mehr dem goldenen Schnitt φ."
+        case .lucas:
+            return "Die Schwester der Fibonacci-Folge mit anderem Anfang: 2, 1, 3, 4, 7, 11, 18, 29 … Auch hier ist jede Zahl die Summe der beiden davor."
+        }
+    }
+
+    /// Welche Begriffe in welcher Formel vorkommen.
+    static let perHour: [Int: [Glossary]] = [
+        1: [.ln, .e], 2: [.pi], 3: [.sqrt, .pi, .radian], 4: [.cbrt],
+        5: [.e, .phi, .power], 6: [.sec, .sinCos, .radian, .power], 7: [.sqrt], 8: [.phi, .fibonacci],
+        9: [.pi, .e, .radian], 10: [.sinh, .e], 11: [.pi, .power], 12: [.csc, .sinCos, .radian, .power],
+        13: [.pi, .power], 14: [.sqrt], 15: [.e, .power], 16: [.ln, .e, .power],
+        17: [.e, .sqrt, .power], 18: [.phi, .power, .lucas], 19: [.e, .power], 20: [.e, .pi, .power],
+        21: [.phi, .sqrt, .power, .fibonacci], 22: [.pi], 23: [.e, .pi, .power], 24: [.gamma],
+    ]
+}
+
+/// Gemeinsamer Rahmen der Erklärfenster: weißer Grund, orange Schrift.
+enum InfoStyle {
+    static let deep = Color(red: 0.72, green: 0.38, blue: 0.0)   // dunkleres Orange für Fließtext, besser lesbar auf Weiß
+    static let width: CGFloat = 520
+}
+
 struct ExplanationView: View {
     let hour: Int
-    private let deep = Color(red: 0.72, green: 0.38, blue: 0.0)   // dunkleres Orange für Fließtext, besser lesbar auf Weiß
+    private let deep = InfoStyle.deep
 
     var body: some View {
         let f = HourFormula.all[hour]!
@@ -63,12 +159,33 @@ struct ExplanationView: View {
                 .lineSpacing(4)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Text("φ = (1 + √5) / 2 ≈ 1,6180   ·   e ≈ 2,7183   ·   π ≈ 3,1416")
-                .font(.system(size: 12, design: .serif))
-                .foregroundStyle(Palette.orange.opacity(0.8))
+            if let terms = Glossary.perHour[hour], !terms.isEmpty {
+                Text("WAS DIE ZEICHEN BEDEUTEN")
+                    .font(.system(size: 11, weight: .semibold, design: .serif))
+                    .tracking(1.5)
+                    .foregroundStyle(Palette.orange)
+                    .padding(.top, 4)
+                ForEach(terms, id: \.self) { t in
+                    HStack(alignment: .firstTextBaseline, spacing: 14) {
+                        Text(t.symbol)
+                            .font(.system(size: 18, design: .serif).italic())
+                            .foregroundStyle(Palette.orange)
+                            .frame(width: 64, alignment: .trailing)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(t.name)
+                                .font(.system(size: 14, weight: .semibold, design: .serif))
+                            Text(t.text)
+                                .font(.system(size: 14, design: .serif))
+                                .lineSpacing(3)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .foregroundStyle(deep)
+                    }
+                }
+            }
         }
         .padding(30)
-        .frame(width: 460, alignment: .leading)
+        .frame(width: InfoStyle.width, alignment: .leading)
         .background(Color.white)
     }
 }

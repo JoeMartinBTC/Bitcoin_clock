@@ -34,7 +34,18 @@ if let i = args.firstIndex(of: "--snapshot"), i + 1 < args.count {
         }
     }
     MainActor.assumeIsolated {
-        for h in [9, 21] {
+        let m = MempoolData()
+        m.configure(kinds: [.blockHeight, .fees, .halving], interval: 3600)
+        RunLoop.main.run(until: Date().addingTimeInterval(6))
+        for k in [ComplicationKind.blockHeight, .fees, .halving] {
+            let r = ImageRenderer(content: ComplicationInfoView(kind: k, mempool: m))
+            r.scale = 2
+            if let img = r.nsImage, let tiff = img.tiffRepresentation,
+               let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) {
+                try? png.write(to: dir.appendingPathComponent("info-\(k.rawValue).png"))
+            }
+        }
+        for h in [6, 21] {
             let r = ImageRenderer(content: ExplanationView(hour: h))
             r.scale = 2
             if let img = r.nsImage, let tiff = img.tiffRepresentation,

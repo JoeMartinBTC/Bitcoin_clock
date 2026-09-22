@@ -156,7 +156,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if let label = self.plaqueHit(at: event.locationInWindow) {
                 self.showExplanation(for: label)
             } else if let kind = self.complicationHit(at: event.locationInWindow) {
-                NSWorkspace.shared.open(kind.url(height: self.mempool.height))
+                self.showComplicationInfo(kind)
             } else {
                 self.window.performDrag(with: event)
             }
@@ -197,7 +197,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func showExplanation(for label: Int) {
-        let host = NSHostingView(rootView: ExplanationView(hour: label))
+        showInfo(AnyView(ExplanationView(hour: label)),
+                 title: label == 21 ? "Formel für ₿ (21)" : "Formel für \(label)")
+    }
+
+    private func showComplicationInfo(_ kind: ComplicationKind) {
+        Task { await mempool.refresh() }
+        showInfo(AnyView(ComplicationInfoView(kind: kind, mempool: mempool)), title: kind.menuTitle)
+    }
+
+    /// Ein gemeinsames weißes Erklärfenster neben der Uhr.
+    private func showInfo(_ root: AnyView, title: String) {
+        let host = NSHostingView(rootView: root)
         host.frame.size = host.fittingSize
         let w = explanationWindow ?? {
             let w = NSWindow(contentRect: NSRect(origin: .zero, size: host.fittingSize),
@@ -210,7 +221,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             explanationWindow = w
             return w
         }()
-        w.title = label == 21 ? "Formel für ₿ (21)" : "Formel für \(label)"
+        w.title = title
         w.contentView = host
         w.setContentSize(host.fittingSize)
         if !w.isVisible {
