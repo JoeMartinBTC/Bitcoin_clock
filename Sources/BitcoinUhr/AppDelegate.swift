@@ -25,6 +25,31 @@ final class ClockSettings: ObservableObject {
         }
     }
 
+    enum SecondHand: String, CaseIterable, Identifiable {
+        case off, tick, soft, glide
+        var id: String { rawValue }
+        var title: String {
+            switch self {
+            case .off: return "Aus – keine Last"
+            case .tick: return "Harter Sprung – minimale Last"
+            case .soft: return "Weicher Sprung – geringe Last"
+            case .glide: return "Gleitend – höchste Last"
+            }
+        }
+    }
+
+    enum Refresh: Int, CaseIterable, Identifiable {
+        case one = 60, five = 300, fifteen = 900
+        var id: Int { rawValue }
+        var title: String {
+            switch self {
+            case .one: return "Jede Minute"
+            case .five: return "Alle 5 Minuten"
+            case .fifteen: return "Alle 15 Minuten"
+            }
+        }
+    }
+
     /// Fensterseite = Zifferblatt + Rand für den Schatten.
     static let windowFactor: CGFloat = 1.12
 
@@ -38,9 +63,38 @@ final class ClockSettings: ObservableObject {
     }
     @Published private(set) var launchAtLogin = SMAppService.mainApp.status == .enabled
 
+    @Published var secondHand: SecondHand {
+        didSet { UserDefaults.standard.set(secondHand.rawValue, forKey: "secondHand") }
+    }
+    @Published var showFormulas: Bool { didSet { UserDefaults.standard.set(showFormulas, forKey: "showFormulas") } }
+    @Published var showWatermark: Bool { didSet { UserDefaults.standard.set(showWatermark, forKey: "showWatermark") } }
+    @Published var showAmPm: Bool { didSet { UserDefaults.standard.set(showAmPm, forKey: "showAmPm") } }
+
+    var onComplicationsChange: (() -> Void)?
+    @Published var complications: [ComplicationSlot: ComplicationKind] {
+        didSet {
+            for (slot, kind) in complications { UserDefaults.standard.set(kind.rawValue, forKey: "complication.\(slot.rawValue)") }
+            onComplicationsChange?()
+        }
+    }
+    @Published var refresh: Refresh {
+        didSet { UserDefaults.standard.set(refresh.rawValue, forKey: "refresh"); onComplicationsChange?() }
+    }
+
     init() {
-        size = Size(rawValue: UserDefaults.standard.string(forKey: "size") ?? "") ?? .medium
-        floating = UserDefaults.standard.bool(forKey: "floating")
+        let ud = UserDefaults.standard
+        size = Size(rawValue: ud.string(forKey: "size") ?? "") ?? .medium
+        floating = ud.bool(forKey: "floating")
+        secondHand = SecondHand(rawValue: ud.string(forKey: "secondHand") ?? "") ?? .tick
+        showFormulas = ud.object(forKey: "showFormulas") as? Bool ?? true
+        showWatermark = ud.object(forKey: "showWatermark") as? Bool ?? true
+        showAmPm = ud.object(forKey: "showAmPm") as? Bool ?? true
+        refresh = Refresh(rawValue: ud.integer(forKey: "refresh")) ?? .five
+        var c: [ComplicationSlot: ComplicationKind] = [:]
+        for slot in ComplicationSlot.allCases {
+            c[slot] = ComplicationKind(rawValue: ud.string(forKey: "complication.\(slot.rawValue)") ?? "") ?? slot.defaultKind
+        }
+        complications = c
     }
 
     /// Beim ersten Start trägt sich die App einmal als Anmeldeobjekt ein.
@@ -61,8 +115,10 @@ final class ClockSettings: ObservableObject {
     }
 }
 
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let settings = ClockSettings()
+    private let mempool = MempoolData()
     private var window: NSWindow!
     private var dragMonitor: Any?
     private var explanationWindow: NSWindow?
@@ -80,7 +136,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.hasShadow = false
         window.isReleasedWhenClosed = false
         window.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
-        window.contentView = NSHostingView(rootView: ClockView(settings: settings))
+        window.contentView = NSHostingView(rootView: ClockView(settings: settings, mempool: mempool))
 
         if !window.setFrameUsingName("BitcoinUhr"), let screen = NSScreen.main {
             let vf = screen.visibleFrame
@@ -89,16 +145,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.setFrameAutosaveName("BitcoinUhr")
 
         settings.onChange = { [weak self] in self?.applyWindowSettings() }
+        settings.onComplicationsChange = { [weak self] in self?.applyComplications() }
+        applyComplications()
         applyWindowSettings()
         window.orderFrontRegardless()
 
-        // Klick auf das Formel-Schild öffnet die Erläuterung, sonst verschiebt die linke Maustaste die Uhr.
+        // Klick auf Formel-Schild oder Komplikation öffnet das Ziel, sonst verschiebt die linke Maustaste die Uhr.
         dragMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
             guard let self, event.window === self.window else { return event }
-            let hit = self.plaqueHit(at: event.locationInWindow)
-            NSLog("BitcoinUhr: Klick bei \(event.locationInWindow), Schild \(hit.map(String.init) ?? "–")")
-            if let label = hit {
+            if let label = self.plaqueHit(at: event.locationInWindow) {
                 self.showExplanation(for: label)
+            } else if let kind = self.complicationHit(at: event.locationInWindow) {
+                NSWorkspace.shared.open(kind.url(height: self.mempool.height))
             } else {
                 self.window.performDrag(with: event)
             }
@@ -111,13 +169,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Beschriftung der aktiven Formel, wenn der Klick auf ihrem Schild liegt.
     private func plaqueHit(at point: NSPoint) -> Int? {
         let now = Date()
-        guard let p = DialView.activePosition(at: now) else { return nil }
+        guard settings.showFormulas, let p = DialView.activePosition(at: now) else { return nil }
         let size = window.contentView?.bounds.size ?? window.frame.size
         let d = min(size.width, size.height) / ClockSettings.windowFactor
         let o = DialView.plaqueOffset(position: p, d: d)
         let center = NSPoint(x: size.width / 2 + o.width, y: size.height / 2 - o.height)   // AppKit: y nach oben
         guard abs(point.x - center.x) < d * 0.13, abs(point.y - center.y) < d * 0.09 else { return nil }
         return DialView.label(position: p, pm: Calendar.current.component(.hour, from: now) >= 12)
+    }
+
+    /// Komplikation unter dem Klick, falls eine sichtbar ist.
+    private func complicationHit(at point: NSPoint) -> ComplicationKind? {
+        let size = window.contentView?.bounds.size ?? window.frame.size
+        let d = min(size.width, size.height) / ClockSettings.windowFactor
+        let half = ComplicationSlot.hitHalfSize
+        for slot in ComplicationSlot.allCases {
+            guard let kind = settings.complications[slot], kind != .off else { continue }
+            let o = slot.offset(d: d)
+            let c = NSPoint(x: size.width / 2 + o.width, y: size.height / 2 - o.height)
+            if abs(point.x - c.x) < d * half.width, abs(point.y - c.y) < d * half.height { return kind }
+        }
+        return nil
+    }
+
+    private func applyComplications() {
+        mempool.configure(kinds: Set(settings.complications.values), interval: TimeInterval(settings.refresh.rawValue))
     }
 
     private func showExplanation(for label: Int) {

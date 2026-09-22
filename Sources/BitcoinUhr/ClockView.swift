@@ -9,51 +9,103 @@ enum Palette {
 
 struct ClockView: View {
     @ObservedObject var settings: ClockSettings
+    @ObservedObject var mempool: MempoolData
+
+    private func dial(_ date: Date, _ d: CGFloat) -> DialView {
+        DialView(date: date, d: d, showWatermark: settings.showWatermark,
+                 showFormulas: settings.showFormulas, showAmPm: settings.showAmPm)
+    }
 
     var body: some View {
         GeometryReader { geo in
             let d = min(geo.size.width, geo.size.height) / ClockSettings.windowFactor
             // Nur die Zeiger laufen schnell; Blatt und Beschriftung ändern sich selten.
             ZStack {
-                DialView(date: .now, d: d).staticFace.drawingGroup()
+                dial(.now, d).staticFace.drawingGroup()
                 // Beschriftung und Schilder ändern sich nur zur vollen Minute.
                 TimelineView(.everyMinute) { ctx in
-                    DialView(date: ctx.date, d: d).marks
+                    dial(ctx.date, d).marks
                 }
+                complications(d)
                 // Zeiger drehen sich per Core Animation, ohne Rechenlast in der App.
-                HandsLayer(d: d).frame(width: d, height: d)
+                HandsLayer(d: d, secondHand: settings.secondHand).frame(width: d, height: d)
                 DialView.centerCap(d: d)
                 TimelineView(.everyMinute) { ctx in
-                    DialView(date: ctx.date, d: d).plaques
+                    dial(ctx.date, d).plaques
                 }
-                DialView(date: .now, d: d).glass
+                dial(.now, d).glass
             }
             .frame(width: d, height: d)
             .frame(width: geo.size.width, height: geo.size.height)
         }
-        .contextMenu {
-            Menu("Größe") {
-                ForEach(ClockSettings.Size.allCases) { size in
-                    Toggle(size.title, isOn: Binding(
-                        get: { settings.size == size },
-                        set: { if $0 { settings.size = size } }
-                    ))
+        .contextMenu { menu }
+    }
+
+    private func complications(_ d: CGFloat) -> some View {
+        ZStack {
+            ForEach(ComplicationSlot.allCases) { slot in
+                if let kind = settings.complications[slot], kind != .off {
+                    ComplicationView(kind: kind, value: mempool.value(for: kind), d: d)
+                        .offset(slot.offset(d: d))
                 }
             }
-            Toggle("Über allen Fenstern", isOn: $settings.floating)
-            Toggle("Beim Anmelden starten", isOn: Binding(
-                get: { settings.launchAtLogin },
-                set: { settings.setLaunchAtLogin($0) }
-            ))
-            Divider()
-            Button("Bitcoin-Uhr beenden") { NSApp.terminate(nil) }
         }
+        .frame(width: d, height: d)
+        .allowsHitTesting(false)
+    }
+
+    private func check<T: Equatable>(_ title: String, _ value: T, _ current: Binding<T>) -> some View {
+        Toggle(title, isOn: Binding(get: { current.wrappedValue == value },
+                                    set: { if $0 { current.wrappedValue = value } }))
+    }
+
+    @ViewBuilder private var menu: some View {
+        Menu("Größe") {
+            ForEach(ClockSettings.Size.allCases) { check($0.title, $0, $settings.size) }
+        }
+        Menu("Sekundenzeiger (CPU-Last)") {
+            ForEach(ClockSettings.SecondHand.allCases) { check($0.title, $0, $settings.secondHand) }
+        }
+        Menu("Anzeige") {
+            Toggle("Formeln auf den 5-Minuten-Strichen", isOn: $settings.showFormulas)
+            Toggle("₿-Wasserzeichen", isOn: $settings.showWatermark)
+            Toggle("AM/PM", isOn: $settings.showAmPm)
+        }
+        Menu("Komplikationen (mempool.space)") {
+            ForEach(ComplicationSlot.allCases) { slot in
+                Menu(slot.title) {
+                    ForEach(ComplicationKind.allCases) { kind in
+                        Toggle(kind.menuTitle, isOn: Binding(
+                            get: { settings.complications[slot] == kind },
+                            set: { if $0 { settings.complications[slot] = kind } }))
+                    }
+                }
+            }
+            Divider()
+            Menu("Aktualisierung") {
+                ForEach(ClockSettings.Refresh.allCases) { check($0.title, $0, $settings.refresh) }
+            }
+            Button("Jetzt aktualisieren") { Task { await mempool.refresh() } }
+        }
+        Divider()
+        Toggle("Über allen Fenstern", isOn: $settings.floating)
+        Toggle("Beim Anmelden starten", isOn: Binding(
+            get: { settings.launchAtLogin },
+            set: { settings.setLaunchAtLogin($0) }
+        ))
+        Divider()
+        Button("Bitcoin-Uhr beenden") { NSApp.terminate(nil) }
     }
 }
 
 struct DialView: View {
     let date: Date
     let d: CGFloat
+    var showWatermark = true
+    var showFormulas = true
+    var showAmPm = true
+
+    private var active: Int? { showFormulas ? Self.activePosition(at: date) : nil }
 
     private var time: (hour: Double, minute: Double, second: Double) {
         let c = Calendar.current.dateComponents([.hour, .minute, .second, .nanosecond], from: date)
@@ -90,18 +142,24 @@ struct DialView: View {
     // MARK: Ebenen
 
     var staticFace: some View {
-        ZStack { caseAndFace; watermark; minuteTrack; brand }.frame(width: d, height: d)
+        ZStack {
+            caseAndFace
+            if showWatermark { watermark }
+            minuteTrack
+            brand
+        }
+        .frame(width: d, height: d)
     }
 
     var marks: some View {
-        let active = Self.activePosition(at: date)
+        let active = self.active
         let pm = isPM
         return ZStack {
             hourMarkers(active: active)
             ForEach(1...12, id: \.self) { p in
                 HourLabel(position: p, label: Self.label(position: p, pm: pm), active: active, d: d)
             }
-            amPm(pm)
+            if showAmPm { amPm(pm) }
         }
         .frame(width: d, height: d)
     }
@@ -112,7 +170,7 @@ struct DialView: View {
     }
 
     var plaques: some View {
-        let active = Self.activePosition(at: date)
+        let active = self.active
         let pm = isPM
         return ZStack {
             ForEach(1...12, id: \.self) { p in

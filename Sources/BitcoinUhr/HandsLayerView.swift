@@ -7,10 +7,14 @@ import SwiftUI
 /// Uhrzeitänderung und alle zehn Minuten.
 struct HandsLayer: NSViewRepresentable {
     let d: CGFloat
+    let secondHand: ClockSettings.SecondHand
 
     func makeNSView(context: Context) -> HandsNSView { HandsNSView() }
 
-    func updateNSView(_ view: HandsNSView, context: Context) { view.configure(d: d) }
+    func updateNSView(_ view: HandsNSView, context: Context) {
+        view.secondHand = secondHand
+        view.configure(d: d)
+    }
 }
 
 final class HandsNSView: NSView {
@@ -20,6 +24,9 @@ final class HandsNSView: NSView {
     private var d: CGFloat = 0
     private var scale: CGFloat = 0
     private var timer: Timer?
+    var secondHand: ClockSettings.SecondHand = .tick {
+        didSet { if secondHand != oldValue { resync() } }
+    }
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -87,7 +94,14 @@ final class HandsNSView: NSView {
         // Schrittweise statt stufenlos: der Render-Server zeichnet nur zu den Sprüngen neu.
         step(hourLayer, period: 12 * 3600, steps: 720, elapsed: secOf12h)     // jede Minute 0,5°
         step(minuteLayer, period: 3600, steps: 360, elapsed: secOfHour)       // alle 10 s 1°
-        step(secondLayer, period: 60, steps: 60, elapsed: sec)                // jede Sekunde 6°, harter Sprung
+        secondLayer.isHidden = secondHand == .off
+        secondLayer.removeAllAnimations()
+        switch secondHand {
+        case .off: break
+        case .tick: step(secondLayer, period: 60, steps: 60, elapsed: sec)   // jede Sekunde 6°, harter Sprung
+        case .soft: softTick(secondLayer, elapsed: sec)
+        case .glide: glide(secondLayer, elapsed: sec)
+        }
     }
 
     /// Drehung im Uhrzeigersinn in gleichen Sprüngen, phasengenau zur Uhrzeit.
@@ -103,6 +117,44 @@ final class HandsNSView: NSView {
         l.add(a, forKey: "step")
     }
 
+}
+
+extension HandsNSView {
+    /// Steht 0,82 s, springt dann in 0,18 s weich zur nächsten Sekunde.
+    fileprivate func softTick(_ l: CALayer, elapsed: Double) {
+        var values: [Double] = []
+        var times: [NSNumber] = []
+        var timing: [CAMediaTimingFunction] = []
+        for i in 0..<60 {
+            let a = -Double(i) / 60 * 2 * .pi
+            values += [a, a]
+            times += [NSNumber(value: Double(i) / 60), NSNumber(value: (Double(i) + 0.82) / 60)]
+            timing += [CAMediaTimingFunction(name: .linear), CAMediaTimingFunction(name: .easeOut)]
+        }
+        values.append(-2 * .pi)
+        times.append(1)
+        let k = CAKeyframeAnimation(keyPath: "transform.rotation.z")
+        k.values = values
+        k.keyTimes = times
+        k.timingFunctions = timing
+        k.duration = 60
+        k.repeatCount = .infinity
+        k.beginTime = l.convertTime(CACurrentMediaTime(), from: nil) - elapsed
+        k.isRemovedOnCompletion = false
+        l.add(k, forKey: "step")
+    }
+
+    /// Stufenlos gleitend wie ein mechanisches Werk.
+    fileprivate func glide(_ l: CALayer, elapsed: Double) {
+        let a = CABasicAnimation(keyPath: "transform.rotation.z")
+        a.fromValue = 0
+        a.toValue = -2 * Double.pi
+        a.duration = 60
+        a.repeatCount = .infinity
+        a.beginTime = l.convertTime(CACurrentMediaTime(), from: nil) - elapsed
+        a.isRemovedOnCompletion = false
+        l.add(a, forKey: "step")
+    }
 }
 
 /// Rastert die drei Zeiger (mit Schatten) aus den SwiftUI-Formen in 12-Uhr-Stellung.
