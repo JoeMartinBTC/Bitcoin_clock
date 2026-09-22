@@ -89,6 +89,8 @@ Wo was liegt:
 
 Zum Ausprobieren ohne Installation rendert `BitcoinUhr --snapshot <ordner> 21:45:00` das Zifferblatt und die Erklärfenster als PNG.
 
+Wie die Uhr innen aufgebaut ist — Ebenen, Zeiger mit Core Animation, Klick-Erkennung, Messwerte zur CPU-Last und die Fallen beim Bau — steht in **[docs/ENTWICKLUNG.md](docs/ENTWICKLUNG.md)**.
+
 ## Lizenz
 
 [MIT](LICENSE)
