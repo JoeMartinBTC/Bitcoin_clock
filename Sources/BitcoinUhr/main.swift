@@ -24,7 +24,7 @@ if let i = args.firstIndex(of: "--snapshot"), i + 1 < args.count {
                 }
             }
                 .frame(width: 672, height: 672)
-                .background(Color(white: 0.5))
+                .background(Color.clear)
             let renderer = ImageRenderer(content: view)
             renderer.scale = 2
             if let img = renderer.nsImage, let tiff = img.tiffRepresentation,
